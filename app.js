@@ -317,9 +317,16 @@ function materials(b) {
       if (ord[key] == null) ord[key] = k++;
     });
   });
+  /* Пришло на объект, а в проекте такого нет: производственная необходимость,
+     замены, довозы. Показываем отдельно, иначе приход просто некуда записать. */
+  ((ST.extra && ST.extra[b.id]) || []).forEach(function (x) {
+    var key = x.n + '|' + x.u;
+    if (!acc[key]) acc[key] = { n: x.n, u: x.u, s: 'Сверх проекта', need: 0, done: 0, extra: true };
+  });
+
   var rc = recvOf(b);
   return Object.keys(acc).map(function (key) {
-    acc[key].o = ord[key] == null ? 1e6 : ord[key];
+    acc[key].o = acc[key].extra ? 1e7 : (ord[key] == null ? 1e6 : ord[key]);
     acc[key].key = key;
     acc[key].recv = rc[key] || 0;
     return acc[key];
@@ -639,7 +646,7 @@ function viewMat() {
   var tot = { need: 0, recv: 0, done: 0, order: 0 };
   list.forEach(function (x) {
     tot.need += x.need; tot.recv += x.recv; tot.done += x.done;
-    tot.order += Math.max(0, x.need - x.recv);
+    if (x.need) tot.order += Math.max(0, x.need - x.recv);
   });
   var nRecv = list.filter(function (x) { return x.recv; }).length;
 
@@ -649,17 +656,19 @@ function viewMat() {
     var order = x.need - x.recv;          /* сколько ещё не пришло на объект */
     var stock = x.recv - x.done;          /* лежит на объекте, но не смонтировано */
     return head + '<tr><td>' + h(x.n) + '</td><td class="num v-mut">' + h(x.u) + '</td>' +
-      '<td class="num">' + nf(x.need) + '</td>' +
+      '<td class="num' + (x.need ? '' : ' v-mut') + '">' + (x.need ? nf(x.need) : '—') + '</td>' +
       '<td class="num"><input class="qi" data-recv="' + h(x.key) + '" value="' + (x.recv || '') + '" placeholder="—"></td>' +
       '<td class="num ' + (x.done ? 'v-ok' : 'v-mut') + '">' + (x.done ? nf(x.done) : '—') + '</td>' +
       '<td class="num ' + (!x.recv ? 'v-mut' : stock < 0 ? 'v-bad' : '') + '">' +
       (x.recv ? nf(stock) : '—') + '</td>' +
-      '<td class="num ' + (order > 0 ? 'v-bad' : 'v-ok') + '">' + (order > 0 ? nf(order) : '0') + '</td></tr>';
+      '<td class="num ' + (!x.need ? 'v-mut' : order > 0 ? 'v-bad' : 'v-ok') + '">' +
+      (!x.need ? '—' : order > 0 ? nf(order) : '0') + '</td></tr>';
   }).join('');
 
   return '<div class="head"><h1>Материалы</h1><span class="sub">' + h(b.name) + ' · ' + list.length + ' позиций</span>' +
     '<span class="sp"></span>' +
     '<input id="q" placeholder="Поиск по названию" style="width:230px" value="' + h(VIEW.q || '') + '">' +
+    '<button class="btn" data-act="addmat">+ Позиция</button>' +
     '<button class="btn" data-act="csv">' + I.file + ' Выгрузить в CSV</button></div>' +
 
     '<div class="grid g4" style="margin-bottom:14px">' +
@@ -1078,6 +1087,21 @@ function act(a) {
       delete ST.cfg[bld().id]; ST.cfgman = true; MAPS = {}; save(); render();
       break;
     case 'loadobj': loadObject(); break;
+    case 'addmat':
+      var nm = prompt('Что пришло на объект? Название как в накладной:');
+      if (!nm || !nm.trim()) return;
+      var un = prompt('Единица измерения:', 'шт') || 'шт';
+      var bb = bld();
+      ST.extra = ST.extra || {};
+      ST.extra[bb.id] = ST.extra[bb.id] || [];
+      var kk = nm.trim() + '|' + un.trim();
+      if (ST.extra[bb.id].some(function (x) { return x.n + '|' + x.u === kk; })) {
+        toast('Такая позиция уже есть');
+      } else {
+        ST.extra[bb.id].push({ n: nm.trim(), u: un.trim() });
+      }
+      save(); render();
+      break;
     case 'csv': exportCsv(); break;
     case 'crewcsv': exportCrewCsv(); break;
     case 'backup':
@@ -1338,6 +1362,7 @@ function applyObject(o, name) {
     ST.crews = o.crews || [];
     ST.acc = o.acc || [];
     ST.recv = o.recv || {};
+    ST.extra = o.extra || {};
     if (o.walk) {
       ST.flats = o.walk;
       ST.imp = {
