@@ -68,14 +68,14 @@ function groupZone(k) {
   var g = GROUPS.filter(function (x) { return x.k === k; })[0];
   return g ? g.z : 'flat';
 }
-/* Позиции подсчёта из обхода — тоже к группам. Названия там свои и зоны нет,
-   поэтому санузел берём из раздела позиции приёмки, а не из названия. */
-function groupOfCount(name) {
-  var n = String(name);
-  if (/розетк/i.test(n)) return 'socket';
+/* Позиции подсчёта из обхода — тоже к группам. Зону берём из раздела позиции
+   («Санузел»), а не из названия: в обходе «Светильники» есть и там, и там. */
+function groupOfCount(name, zone) {
+  var n = String(name), wc = zone === 'wc';
+  if (/розетк/i.test(n)) return wc ? 'socket_wc' : 'socket';
   if (/выключател/i.test(n)) return 'swtch';
-  if (/светильник|люстр/i.test(n)) return 'light_wc';
   if (/бра/i.test(n)) return 'bra_wc';
+  if (/светильник|люстр/i.test(n)) return wc ? 'light_wc' : 'lamp';
   if (/лампа|патрон/i.test(n)) return 'lamp';
   if (/коробк/i.test(n)) return 'box';
   if (/рамк/i.test(n)) return 'frame';
@@ -731,11 +731,34 @@ function viewCrews() {
   var grand = 0;
   ids.forEach(function (i) { grand += sums[i].total; });
 
+  /* Подсчёт ведут не по всем корпусам сразу, и пустой экран выглядит как поломка.
+     Поэтому сразу показываем, где данные есть. */
+  var where = PROJ.buildings.map(function (x) {
+    var t = 0, cs = crewSum(x.id);
+    Object.keys(cs).forEach(function (i) { t += cs[i].total; });
+    return { b: x, total: t };
+  });
+  var has = where.filter(function (x) { return x.total; });
+
   if (!ids.length) {
-    return '<div class="head"><h1>Бригады</h1></div>' +
-      '<div class="empty">' + I.warn + '<div>Данных о бригадах нет.</div>' +
-      '<div style="font-size:14px;margin-top:8px">Они приезжают вместе с выгрузкой обхода — ' +
-      'раздел «Данные обхода». Считается то, что монтажники отметили на вкладке «Подсчёт».</div></div>';
+    return '<div class="head"><h1>Бригады</h1>' +
+      '<span class="sub">' + (scope === 'all' ? 'весь объект' : h(bld(scope).name)) + '</span></div>' +
+      '<div class="tabs"><button class="tab ' + (scope === 'all' ? 'on' : '') + '" data-scope="all">Весь объект</button>' +
+      PROJ.buildings.map(function (x) {
+        return '<button class="tab ' + (scope === x.id ? 'on' : '') + '" data-scope="' + x.id + '">' + h(x.name) + '</button>';
+      }).join('') + '</div>' +
+      '<div class="empty">' + I.warn +
+      '<div style="font-weight:650">' +
+      (scope === 'all' ? 'Подсчёт по бригадам не вели' : 'По корпусу «' + h(bld(scope).name) + '» подсчёт не вели') +
+      '</div>' +
+      '<div style="font-size:14px;margin-top:8px;line-height:1.5">' +
+      (has.length
+        ? 'Данные есть по другому корпусу: ' + has.map(function (x) {
+          return '<b>' + h(x.b.name) + '</b> — ' + nf(x.total) + ' шт.';
+        }).join(', ') + '.<br>Приёмка при этом ведётся по обоим — она в разделе «Квартиры».'
+        : 'Объёмы считаются на вкладке «Подсчёт» в приложении обхода и приезжают ' +
+        'вместе с выгрузкой. Приёмка сюда не входит — она в разделе «Квартиры».') +
+      '</div></div>';
   }
 
   var cols = GROUPS.filter(function (g) {
@@ -1191,7 +1214,10 @@ function doImport() {
   var p = VIEW.pending, o = p.raw, cfg = o.cfg, n = 0;
   /* позиции подсчёта из обхода → наши группы; без этого факт не с чем сложить */
   var cmap = {};
-  (cfg.count || []).forEach(function (c) { cmap[c.id] = groupOfCount(c.n); });
+  (cfg.count || []).forEach(function (c) {
+    var z = /санузел|с\/у|ванн/i.test(String(c.g || '')) ? 'wc' : 'flat';
+    cmap[c.id] = groupOfCount(c.n, z);
+  });
   var pos = cfg.positions || [];
 
   ST.crews = (o.crews || []).map(function (w) { return { id: w.id, n: w.n }; });

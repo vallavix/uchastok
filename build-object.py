@@ -93,23 +93,34 @@ EXTRA = {
 }
 
 # позиции подсчёта из обхода → группы приложения
-GROUPS = [
-    ('socket', r'розетк'), ('swtch', r'выключател'), ('light', r'светильник|люстр'),
-    ('lamp', r'бра|лампа|патрон'), ('box', r'коробк'), ('frame', r'рамк'),
-    ('panel', r'щит'), ('kup', r'куп|суп|уравнива'),
-]
+def group_of_count(name, zone='flat'):
+    """Позиция подсчёта из обхода → группа приложения.
+    Зона берётся из раздела позиции: «Светильники» есть и в квартире, и в санузле."""
+    n = str(name).lower()
+    wc = zone == 'wc'
+    if re.search(r'розетк', n):
+        return 'socket_wc' if wc else 'socket'
+    if re.search(r'выключател', n):
+        return 'swtch'
+    if re.search(r'бра', n):
+        return 'bra_wc'
+    if re.search(r'светильник|люстр', n):
+        return 'light_wc' if wc else 'lamp'
+    if re.search(r'лампа|патрон', n):
+        return 'lamp'
+    if re.search(r'коробк', n):
+        return 'box'
+    if re.search(r'рамк', n):
+        return 'frame'
+    if re.search(r'щит', n):
+        return 'panel'
+    if re.search(r'куп|суп|уравнива', n):
+        return 'kup_wc'
+    return None
 
 
 def type_id(code):
     return 't' + code.replace('.', '_').replace('-', '_')
-
-
-def group_of_count(name):
-    n = str(name).lower()
-    for key, pat in GROUPS:
-        if re.search(pat, n):
-            return key
-    return None
 
 
 def read_types(path):
@@ -155,7 +166,10 @@ def read_walk(path):
     # вперёд, и без разделения готовые санузлы не видны за незакрытой квартирой
     def zone_of(p):
         return 'wc' if re.search(r'санузел|с/у|ванн', str(p.get('g') or ''), re.I) else 'flat' 
-    cmap = {c['id']: group_of_count(c['n']) for c in (cfg.get('count') or [])}
+    cmap = {}
+    for c in (cfg.get('count') or []):
+        cz = 'wc' if re.search(r'санузел|с/у|ванн', str(c.get('g') or ''), re.I) else 'flat'
+        cmap[c['id']] = group_of_count(c['n'], cz)
     crews = [{'id': w['id'], 'n': w['n']} for w in (cfg.get('crews') or [])]
 
     flats, total = {}, 0
