@@ -139,8 +139,13 @@ def read_walk(path):
                 rec['c'] = 2 if miss else 1
             if miss:
                 rec['miss'] = ', '.join(miss)
-            if r.get('left'):
-                rec['left'] = r['left']
+            # раньше в обходе было два поля; теперь одно, старое дописываем
+            left = (r.get('left') or '').strip()
+            note = (r.get('note') or '').strip()
+            if note:
+                left = (left + '\n' + note) if left else note
+            if left:
+                rec['left'] = left
             if r.get('crit'):
                 rec['crit'] = True
             if r.get('fix'):
