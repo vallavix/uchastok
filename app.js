@@ -156,11 +156,16 @@ function planOf(b, num) {
    он стоит на объекте и видит квартиру, а выгрузка может быть недельной давности. */
 function factOf(b, num) {
   var r = fr(b.id, num), q = r.q || {}, qm = r.qm || {}, per = {}, total = 0;
+  /* Квартира принята без замечаний, а количества по ней никто не считал —
+     берём проектные: всё, что должно стоять, стоит. */
+  var byPlan = r.c === 1 && ST.autoq !== false && !Object.keys(qm).length;
+  var pl = byPlan ? planOf(b, num).per : null;
   GROUPS.forEach(function (g) {
     var v = qm[g.k] != null ? qm[g.k] : (q[g.k] || 0);
+    if (!v && pl && pl[g.k]) v = pl[g.k];
     if (v) { per[g.k] = v; total += v; }
   });
-  return { per: per, total: total, man: qm, imp: q };
+  return { per: per, total: total, man: qm, imp: q, byPlan: byPlan && total > 0 };
 }
 function setQ(b, num, k, v) {
   var r = fr(b.id, num, true);
@@ -170,10 +175,13 @@ function setQ(b, num, k, v) {
   if (!Object.keys(r.qm).length) delete r.qm;
   save();
 }
-/* Стадии: «установлено» и «сдано» ставит начальник, «проверено» приходит из обхода */
+/* Стадии: «сдано» ставит начальник, «проверено» приходит из обхода.
+   «Установлено» отдельно отмечать не нужно там, где квартиру уже приняли без
+   замечаний: принято — значит всё по проекту стоит. Руками тоже можно. */
 function stg(b, num) {
   var r = fr(b.id, num);
-  return { m: !!r.m, c: r.c || 0, s: !!r.s };
+  var auto = r.c === 1 && ST.autom !== false;
+  return { m: !!r.m || auto, c: r.c || 0, s: !!r.s, autom: auto && !r.m };
 }
 function sumB(b) {
   var mp = flatMap(b), out = { all: mp.nums.length, m: 0, c: 0, clean: 0, s: 0, plan: {}, fact: {} };
@@ -438,7 +446,9 @@ function viewFlat() {
 
     '<div class="grid g2">' +
     '<div><div class="sec">Стадии</div><div class="card">' +
-    '<div class="row"><b>Установлено (чистовая)</b><div class="sw' + (g.m ? ' on' : '') + '" data-sg="m"></div></div>' +
+    '<div class="row"><b>Установлено (чистовая)' +
+    (g.autom ? '<br><span class="badge ok">принято обходом</span>' : '') +
+    '</b><div class="sw' + (g.m ? ' on' : '') + '" data-sg="m"></div></div>' +
     '<div class="row"><b style="color:var(--muted-fg)">Проверено обходом</b>' +
     '<div class="sw ro' + (g.c ? ' on' + (g.c === 2 ? ' warn' : '') : '') + '"></div></div>' +
     '<div class="row"><b>Сдано заказчику</b><div class="sw' + (g.s ? ' on' : '') + '" data-sg="s"></div></div>' +
@@ -457,6 +467,11 @@ function viewFlat() {
       '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">' +
       '<button class="btn btn-ok" data-act="allplan">' + I.check + ' Всё по проекту</button>' +
       '<button class="btn" data-act="clearq">Обнулить</button></div>' +
+      (fa.byPlan
+        ? '<div class="note" style="margin-top:10px">Квартира принята обходом без замечаний, ' +
+        'поэтому факт показан по проекту. Поправь любую цифру — и дальше по этой квартире ' +
+        'будут только твои числа.</div>'
+        : '') +
       '<div class="hint">Цифры правятся руками — кнопками или прямо в поле. Если по квартире ' +
       'приезжали данные обхода, а ты поставил своё число, под названием останется, что показывал обход.</div>'
       : '<div class="card pad" style="color:var(--muted-fg);font-size:14px">Нечего сравнивать: тип не определён.</div>') +
@@ -707,6 +722,17 @@ function viewImport() {
     '<b style="color:var(--fg)">разбивка по бригадам</b> для раздела «Бригады». Твои отметки ' +
     '«Установлено» и «Сдано» и твои ручные количества импорт не трогает.<br><br>' +
     'Полная резервная копия обхода тоже подойдёт — но она тяжёлая из-за фотографий.</div>' +
+    '<div class="sec">Что считать сделанным</div>' +
+    '<div class="card">' +
+    '<div class="row"><b>Принятые квартиры считать установленными</b>' +
+    '<div class="sw' + (ST.autom !== false ? ' on' : '') + '" data-opt="autom"></div></div>' +
+    '<div class="row"><b>По принятым брать количества из проекта</b>' +
+    '<div class="sw' + (ST.autoq !== false ? ' on' : '') + '" data-opt="autoq"></div></div>' +
+    '</div>' +
+    '<div class="hint">Квартира принята обходом без замечаний — значит по ней всё смонтировано ' +
+    'по проекту. Пока эти правила включены, отдельно отмечать такие квартиры и вбивать по ним ' +
+    'количества не нужно. Любая ручная правка всё равно главнее.</div>' +
+
     '<div class="sec">Объект</div>' +
     '<div class="card pad" style="font-size:14px;color:var(--muted-fg)">' +
     'Сейчас загружен: <b style="color:var(--fg)">' + h(PROJ.object) + '</b> · корпусов ' + PROJ.buildings.length +
@@ -729,6 +755,13 @@ function bind() {
   });
   app.querySelectorAll('[data-bld]').forEach(function (el) {
     el.onclick = function () { ST.bid = el.dataset.bld; go(VIEW.name === 'flat' ? 'flats' : VIEW.name); };
+  });
+  app.querySelectorAll('[data-opt]').forEach(function (el) {
+    el.onclick = function () {
+      var k = el.dataset.opt;
+      ST[k] = ST[k] === false;
+      save(); render();
+    };
   });
   app.querySelectorAll('[data-scope]').forEach(function (el) {
     el.onclick = function () { VIEW.scope = el.dataset.scope; render(); };
