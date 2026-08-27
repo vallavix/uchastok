@@ -63,6 +63,21 @@ BUILDINGS = [
     },
 ]
 
+# Приход материалов на объект, по накладным. Ключ — начало названия позиции
+# в спецификации, значение — сколько пришло. Заполняется по бумажному учёту;
+# дальше начальник правит прямо в приложении, в колонке «Пришло».
+RECEIVED = {
+    'b1': {
+        'Рамка 1-я': 724,
+        'Рамка 2-я': 360,
+        'Рамка 3-я': 148,
+        'Рамка 4-я': 140,
+        'Выключатель одноклавишный': 800,
+        'Выключатель двухклавишный': 267,
+        'Светильник класса защиты': 196,
+    },
+}
+
 # позиции подсчёта из обхода → группы приложения
 GROUPS = [
     ('socket', r'розетк'), ('swtch', r'выключател'), ('light', r'светильник|люстр'),
@@ -239,8 +254,32 @@ def main():
             ex['stack'] = [type_id(c) if c else '' for c in ex['stack']]
         preset[b['id']] = p
 
+    # приход раскладываем на настоящие ключи ведомости «название|единица»
+    recv = {}
+    for bid, items in RECEIVED.items():
+        b = [x for x in buildings if x['id'] == bid]
+        if not b:
+            continue
+        keys = {}
+        for t in b[0]['types']:
+            for it in t['items']:
+                keys.setdefault(it['n'] + '|' + it['u'], it['n'])
+        out, unmatched = {}, []
+        for prefix, qty in items.items():
+            hit = [k for k in keys if keys[k].startswith(prefix)]
+            if len(hit) == 1:
+                out[hit[0]] = qty
+            else:
+                unmatched.append((prefix, len(hit)))
+        if out:
+            recv[bid] = out
+        if unmatched:
+            print('приход, не сопоставлено (%s):' % bid, unmatched)
+        print('приход (%s): строк %d' % (bid, len(out)))
+
     pkg = {
         't': 'uch-object', 'v': 1,
+        'recv': recv,
         'object': OBJECT_NAME,
         'buildings': buildings,
         'preset': preset,

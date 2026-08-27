@@ -196,6 +196,32 @@ function factOf(b, num) {
   });
   return { per: per, total: total, man: qm, imp: q, byPlan: byPlan };
 }
+/* Приход материалов на объект. Ключ строки — название плюс единица: так же,
+   как в ведомости, иначе цифры разъедутся при правке проекта. */
+function recvOf(b) {
+  ST.recv = ST.recv || {};
+  ST.recv[b.id] = ST.recv[b.id] || {};
+  return ST.recv[b.id];
+}
+function setRecv(b, key, v) {
+  var r = recvOf(b);
+  if (v > 0) r[key] = v; else delete r[key];
+  save();
+}
+
+/* Приход материалов на объект. Ключ строки — название плюс единица: так же,
+   как в самой ведомости, иначе цифры разъедутся при правке проекта. */
+function recvOf(b) {
+  ST.recv = ST.recv || {};
+  ST.recv[b.id] = ST.recv[b.id] || {};
+  return ST.recv[b.id];
+}
+function setRecv(b, key, v) {
+  var r = recvOf(b);
+  if (v > 0) r[key] = v; else delete r[key];
+  save();
+}
+
 function setQ(b, num, k, v) {
   var r = fr(b.id, num, true);
   r.qm = r.qm || {};
@@ -291,8 +317,11 @@ function materials(b) {
       if (ord[key] == null) ord[key] = k++;
     });
   });
+  var rc = recvOf(b);
   return Object.keys(acc).map(function (key) {
     acc[key].o = ord[key] == null ? 1e6 : ord[key];
+    acc[key].key = key;
+    acc[key].recv = rc[key] || 0;
     return acc[key];
   }).sort(function (a, z) { return a.o - z.o; });
 }
@@ -606,26 +635,57 @@ function viewMat() {
   var b = bld(), list = materials(b), q = (VIEW.q || '').toLowerCase();
   var shown = q ? list.filter(function (x) { return x.n.toLowerCase().indexOf(q) >= 0; }) : list;
   var sect = '';
+
+  var tot = { need: 0, recv: 0, done: 0, order: 0 };
+  list.forEach(function (x) {
+    tot.need += x.need; tot.recv += x.recv; tot.done += x.done;
+    tot.order += Math.max(0, x.need - x.recv);
+  });
+  var nRecv = list.filter(function (x) { return x.recv; }).length;
+
   var rows = shown.map(function (x) {
     var head = '';
-    if (x.s !== sect && !q) { sect = x.s; head = '<tr class="grp"><td colspan="5">' + h(sect) + '</td></tr>'; }
-    var left = x.need - x.done;
+    if (x.s !== sect && !q) { sect = x.s; head = '<tr class="grp"><td colspan="7">' + h(sect) + '</td></tr>'; }
+    var order = x.need - x.recv;          /* сколько ещё не пришло на объект */
+    var stock = x.recv - x.done;          /* лежит на объекте, но не смонтировано */
     return head + '<tr><td>' + h(x.n) + '</td><td class="num v-mut">' + h(x.u) + '</td>' +
       '<td class="num">' + nf(x.need) + '</td>' +
+      '<td class="num"><input class="qi" data-recv="' + h(x.key) + '" value="' + (x.recv || '') + '" placeholder="—"></td>' +
       '<td class="num ' + (x.done ? 'v-ok' : 'v-mut') + '">' + (x.done ? nf(x.done) : '—') + '</td>' +
-      '<td class="num ' + (left > 0 ? '' : 'v-mut') + '">' + nf(left) + '</td></tr>';
+      '<td class="num ' + (!x.recv ? 'v-mut' : stock < 0 ? 'v-bad' : '') + '">' +
+      (x.recv ? nf(stock) : '—') + '</td>' +
+      '<td class="num ' + (order > 0 ? 'v-bad' : 'v-ok') + '">' + (order > 0 ? nf(order) : '0') + '</td></tr>';
   }).join('');
 
   return '<div class="head"><h1>Материалы</h1><span class="sub">' + h(b.name) + ' · ' + list.length + ' позиций</span>' +
     '<span class="sp"></span>' +
-    '<input id="q" placeholder="Поиск по названию" style="width:240px" value="' + h(VIEW.q || '') + '">' +
+    '<input id="q" placeholder="Поиск по названию" style="width:230px" value="' + h(VIEW.q || '') + '">' +
     '<button class="btn" data-act="csv">' + I.file + ' Выгрузить в CSV</button></div>' +
+
+    '<div class="grid g4" style="margin-bottom:14px">' +
+    '<div class="card kpi"><div class="l">Нужно по проекту</div><div class="v">' + nf(tot.need) + '</div>' +
+    '<div class="d">позиций в ведомости: ' + list.length + '</div></div>' +
+    '<div class="card kpi"><div class="l">Пришло на объект</div><div class="v">' + nf(tot.recv) + '</div>' +
+    '<div class="d">' + (nRecv ? 'заполнено строк: ' + nRecv : 'приход не заносили') + '</div>' +
+    '<div class="bar"><i class="b-s" style="width:' + Math.min(100, pct(tot.recv, tot.need)) + '%"></i></div></div>' +
+    '<div class="card kpi"><div class="l">Смонтировано</div><div class="v">' + nf(tot.done) + '</div>' +
+    '<div class="d">по установленным квартирам</div>' +
+    '<div class="bar"><i class="b-m" style="width:' + Math.min(100, pct(tot.done, tot.need)) + '%"></i></div></div>' +
+    '<div class="card kpi"><div class="l">Осталось получить</div>' +
+    '<div class="v ' + (tot.order ? 'v-bad' : 'v-ok') + '">' + nf(tot.order) + '</div>' +
+    '<div class="d">' + (tot.order ? 'по проекту ещё не пришло' : 'всё на объекте') + '</div></div>' +
+    '</div>' +
+
     '<div class="tblwrap"><table class="tbl"><thead><tr><th>Наименование</th><th class="num">Ед.</th>' +
-    '<th class="num">Нужно на корпус</th><th class="num">Смонтировано</th><th class="num">Осталось</th>' +
+    '<th class="num">По проекту</th><th class="num" style="width:96px">Пришло</th>' +
+    '<th class="num">Смонтировано</th><th class="num">На объекте</th><th class="num">Заказать</th>' +
     '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
-    '<div class="hint">«Нужно на корпус» — спецификация проекта, умноженная на количество квартир ' +
-    'каждого типа. «Смонтировано» считается по квартирам, отмеченным как <b>установленные</b>: ' +
-    'отмечаешь квартиру — материал по ней уходит в этот столбец.</div>';
+    '<div class="hint">«По проекту» — спецификация, умноженная на количество квартир каждого типа. ' +
+    '<b>«Пришло»</b> вписываешь сам по накладным — это единственная колонка, которую приложение ' +
+    'знать не может. «Смонтировано» считается по установленным квартирам. ' +
+    '<b>«На объекте»</b> — что лежит и ещё не смонтировано (пришло минус смонтировано), ' +
+    '<b>«Заказать»</b> — чего по проекту ещё не привезли. Красное в «На объекте» значит, ' +
+    'что смонтировано больше, чем оприходовано: либо приход занесён не весь, либо возили без накладной.</div>';
 }
 
 /* ---------- бригады: кто сколько сделал ---------- */
@@ -922,6 +982,12 @@ function bind() {
       render();
     };
   });
+  app.querySelectorAll('[data-recv]').forEach(function (el) {
+    el.onchange = function () {
+      setRecv(bld(), el.dataset.recv, Math.max(0, parseInt(el.value, 10) || 0));
+      render();
+    };
+  });
   app.querySelectorAll('[data-cf]').forEach(function (el) {
     el.onchange = function () {
       var b = bld(), c = cfgOf(b) || { from: 1, to: 17, per: 12, first: 1, stack: [] };
@@ -1189,8 +1255,11 @@ function exportCrewCsv() {
 
 function exportCsv() {
   var b = bld(), list = materials(b);
-  var rows = [['Наименование', 'Ед.изм.', 'Нужно на корпус', 'Смонтировано', 'Осталось']];
-  list.forEach(function (x) { rows.push([x.n, x.u, x.need, x.done, x.need - x.done]); });
+  var rows = [['Наименование', 'Ед.изм.', 'По проекту', 'Пришло на объект',
+    'Смонтировано', 'На объекте', 'Осталось получить']];
+  list.forEach(function (x) {
+    rows.push([x.n, x.u, x.need, x.recv, x.done, x.recv - x.done, Math.max(0, x.need - x.recv)]);
+  });
   var csv = '﻿' + rows.map(function (r) {
     return r.map(function (c) { return '"' + String(c).replace(/"/g, '""') + '"'; }).join(';');
   }).join('\r\n');
@@ -1268,6 +1337,7 @@ function applyObject(o, name) {
     ST.cfg = JSON.parse(JSON.stringify(o.preset || {}));
     ST.crews = o.crews || [];
     ST.acc = o.acc || [];
+    ST.recv = o.recv || {};
     if (o.walk) {
       ST.flats = o.walk;
       ST.imp = {
