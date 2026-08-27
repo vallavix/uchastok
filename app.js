@@ -26,36 +26,61 @@ var I = (function () {
 
 /* ============ группы позиций ============ */
 /* Спецификация проекта подробная (45 строк), обход считает крупными позициями.
-   Свести их можно только по группам — иначе факт и план не о чём не говорят. */
+   Свести их можно только по группам — иначе факт и план ни о чём не говорят.
+
+   Зона важна не меньше названия: в санузлах работа обычно уходит вперёд, и если
+   считать квартиру одним куском, готовые санузлы не видны — вся квартира просто
+   висит «с замечаниями». Влагозащищённое исполнение (IP44, IP55) и встраиваемые
+   светильники однозначно выдают санузел. */
 var GROUPS = [
-  { k: 'socket', n: 'Розетки', re: /^Розетк/i },
-  { k: 'swtch', n: 'Выключатели', re: /^Выключател[ья]\s+(одно|двух|тр[её]х)клав/i },
-  { k: 'light', n: 'Светильники', re: /^Светильник/i },
-  { k: 'lamp', n: 'Лампы и патроны', re: /^(Лампа|Карболитовый патрон|Светодиодная лампа)/i },
-  { k: 'box', n: 'Коробки устан.', re: /^Коробка установочная/i },
-  { k: 'frame', n: 'Рамки', re: /^Рамка/i },
-  { k: 'panel', n: 'Щиты', re: /^Щит распред/i },
-  { k: 'kup', n: 'КУП и СУП', re: /^(Коробка монтажная для доп|Хомут уравнивания)/i }
+  { k: 'panel', n: 'Щиты', z: 'flat', re: /^Щит распред/i },
+  { k: 'swtch', n: 'Выключатели', z: 'flat', re: /^Выключател[ья]\s+(одно|двух|тр[её]х)клав/i },
+  { k: 'socket', n: 'Розетки', z: 'flat', re: /^Розетка(?!.*IP44)/i },
+  { k: 'plita', n: 'Розетка на плиту', z: 'flat', re: /^Розетка.*(плит|32А)/i },
+  { k: 'lamp', n: 'Патроны и лампы', z: 'flat', re: /^(Карболитовый патрон|Лампа накаливания)/i },
+  { k: 'box', n: 'Коробки устан.', z: 'flat', re: /^Коробка установочная/i },
+  { k: 'frame', n: 'Рамки', z: 'flat', re: /^Рамка/i },
+
+  { k: 'socket_wc', n: 'Розетки', z: 'wc', re: /^Розетка.*IP44/i },
+  { k: 'light_wc', n: 'Светильники', z: 'wc', re: /^Светильник встраиваемый/i },
+  { k: 'bra_wc', n: 'Бра', z: 'wc', re: /^Светильник класса защиты/i },
+  { k: 'kup_wc', n: 'КУП и СУП', z: 'wc', re: /^(Коробка монтажная для доп|Хомут уравнивания)/i }
 ];
+var ZONES = [{ z: 'flat', n: 'Квартира' }, { z: 'wc', n: 'Санузел' }];
+function zoneName(z) { return z === 'wc' ? 'Санузел' : 'Квартира'; }
+function groupsOfZone(z) {
+  return GROUPS.filter(function (g) { return g.z === z; });
+}
+/* Розетка на плиту тоже розетка, поэтому проверяем её раньше обычных */
 function groupOf(name) {
-  for (var i = 0; i < GROUPS.length; i++) if (GROUPS[i].re.test(name)) return GROUPS[i].k;
+  var plita = GROUPS.filter(function (g) { return g.k === 'plita'; })[0];
+  if (plita.re.test(name)) return 'plita';
+  for (var i = 0; i < GROUPS.length; i++) {
+    if (GROUPS[i].k !== 'plita' && GROUPS[i].re.test(name)) return GROUPS[i].k;
+  }
   return null;
 }
 function groupName(k) {
   var g = GROUPS.filter(function (x) { return x.k === k; })[0];
   return g ? g.n : k;
 }
-/* Названия позиций подсчёта из обхода — тоже к группам, иначе факт не привязать */
+function groupZone(k) {
+  var g = GROUPS.filter(function (x) { return x.k === k; })[0];
+  return g ? g.z : 'flat';
+}
+/* Позиции подсчёта из обхода — тоже к группам. Названия там свои и зоны нет,
+   поэтому санузел берём из раздела позиции приёмки, а не из названия. */
 function groupOfCount(name) {
   var n = String(name);
   if (/розетк/i.test(n)) return 'socket';
   if (/выключател/i.test(n)) return 'swtch';
-  if (/светильник|люстр/i.test(n)) return 'light';
-  if (/бра|лампа|патрон/i.test(n)) return 'lamp';
+  if (/светильник|люстр/i.test(n)) return 'light_wc';
+  if (/бра/i.test(n)) return 'bra_wc';
+  if (/лампа|патрон/i.test(n)) return 'lamp';
   if (/коробк/i.test(n)) return 'box';
   if (/рамк/i.test(n)) return 'frame';
   if (/щит/i.test(n)) return 'panel';
-  if (/куп|суп|уравнива/i.test(n)) return 'kup';
+  if (/куп|суп|уравнива/i.test(n)) return 'kup_wc';
   return null;
 }
 
@@ -156,16 +181,20 @@ function planOf(b, num) {
    он стоит на объекте и видит квартиру, а выгрузка может быть недельной давности. */
 function factOf(b, num) {
   var r = fr(b.id, num), q = r.q || {}, qm = r.qm || {}, per = {}, total = 0;
-  /* Квартира принята без замечаний, а количества по ней никто не считал —
-     берём проектные: всё, что должно стоять, стоит. */
-  var byPlan = r.c === 1 && ST.autoq !== false && !Object.keys(qm).length;
-  var pl = byPlan ? planOf(b, num).per : null;
+  /* Зона принята обходом, а количества по ней никто не считал — берём проектные:
+     всё, что должно стоять, стоит. Считаем по зонам, а не по всей квартире:
+     санузел бывает принят задолго до того, как закрыта комната. */
+  var auto = ST.autoq !== false && !Object.keys(qm).length;
+  var pl = auto ? planOf(b, num).per : null;
+  var okZone = {};
+  if (auto) ZONES.forEach(function (Z) { okZone[Z.z] = zoneAcc(b, num, Z.z).done; });
+  var byPlan = false;
   GROUPS.forEach(function (g) {
     var v = qm[g.k] != null ? qm[g.k] : (q[g.k] || 0);
-    if (!v && pl && pl[g.k]) v = pl[g.k];
+    if (!v && pl && pl[g.k] && okZone[g.z]) { v = pl[g.k]; byPlan = true; }
     if (v) { per[g.k] = v; total += v; }
   });
-  return { per: per, total: total, man: qm, imp: q, byPlan: byPlan && total > 0 };
+  return { per: per, total: total, man: qm, imp: q, byPlan: byPlan };
 }
 function setQ(b, num, k, v) {
   var r = fr(b.id, num, true);
@@ -175,12 +204,53 @@ function setQ(b, num, k, v) {
   if (!Object.keys(r.qm).length) delete r.qm;
   save();
 }
+/* Готовность зоны по приёмке: сколько позиций принято из отмеченных.
+   Позиции приёмки приезжают вместе с выгрузкой — без них зон не разделить. */
+function accPos() { return ST.acc || []; }
+function zoneAcc(b, num, z) {
+  var r = fr(b.id, num), st = r.st || {}, ok = 0, bad = 0, all = 0;
+  accPos().forEach(function (p) {
+    if ((p.z || 'flat') !== z) return;
+    var v = st[p.id];
+    if (v == null) return;
+    all++;
+    if (v === 1 || v === 2) ok++; else bad++;
+  });
+  return { ok: ok, bad: bad, all: all, done: all > 0 && bad === 0 };
+}
+function zonePlan(b, num, z) {
+  var p = planOf(b, num), per = {}, total = 0;
+  groupsOfZone(z).forEach(function (g) {
+    if (p.per[g.k]) { per[g.k] = p.per[g.k]; total += p.per[g.k]; }
+  });
+  return { per: per, total: total };
+}
+function zoneFact(b, num, z) {
+  var f = factOf(b, num), per = {}, total = 0;
+  groupsOfZone(z).forEach(function (g) {
+    if (f.per[g.k]) { per[g.k] = f.per[g.k]; total += f.per[g.k]; }
+  });
+  return { per: per, total: total };
+}
+function zoneSum(b, z) {
+  var mp = flatMap(b), out = { done: 0, started: 0, all: mp.nums.length, plan: 0, fact: 0 };
+  mp.nums.forEach(function (n) {
+    var a = zoneAcc(b, n, z);
+    if (a.done) out.done++;
+    else if (a.all) out.started++;
+    out.plan += zonePlan(b, n, z).total;
+    out.fact += zoneFact(b, n, z).total;
+  });
+  return out;
+}
+
 /* Стадии: «сдано» ставит начальник, «проверено» приходит из обхода.
    «Установлено» отдельно отмечать не нужно там, где квартиру уже приняли без
    замечаний: принято — значит всё по проекту стоит. Руками тоже можно. */
 function stg(b, num) {
   var r = fr(b.id, num);
-  var auto = r.c === 1 && ST.autom !== false;
+  var auto = ST.autom !== false && (r.c === 1 ||
+    (!!(r.st && Object.keys(r.st).length) && ZONES.every(function (Z) { return zoneAcc(b, num, Z.z).done; })));
   return { m: !!r.m || auto, c: r.c || 0, s: !!r.s, autom: auto && !r.m };
 }
 function sumB(b) {
@@ -293,7 +363,8 @@ function viewObj() {
       '<div class="d">' + x[1] + ' из ' + x[2] + ' · ' + x[3] + '</div></div>';
   }).join('');
 
-  var rows = GROUPS.map(function (g) {
+  var rows = ZONES.map(function (Z) {
+    var inner = groupsOfZone(Z.z).map(function (g) {
     var pl = s.plan[g.k] || 0, fa = s.fact[g.k] || 0;
     if (!pl && !fa) return '';
     return '<tr><td>' + h(g.n) + '</td>' +
@@ -302,6 +373,8 @@ function viewObj() {
       '<td class="num ' + (pl - fa > 0 ? 'v-bad' : 'v-mut') + '">' + nf(Math.max(0, pl - fa)) + '</td>' +
       '<td style="width:160px"><div class="bar"><i class="b-s" style="width:' +
       Math.min(100, pct(fa, pl)) + '%"></i></div></td></tr>';
+    }).join('');
+    return inner ? '<tr class="grp"><td colspan="5">' + Z.n + '</td></tr>' + inner : '';
   }).join('');
 
   var warn = '';
@@ -326,6 +399,27 @@ function viewObj() {
     '<div class="srow"><span>Сдано</span><div class="bar"><i class="b-s" style="width:' +
     pct(s.s, s.all) + '%"></i></div><u>' + s.s + '/' + s.all + '</u></div>' +
     '</div>' +
+
+    (accPos().length
+      ? '<div class="sec">Готовность по зонам</div>' +
+      '<div class="grid g2">' + ZONES.map(function (Z) {
+        var zs = zoneSum(b, Z.z);
+        return '<div class="card pad"><div class="kpi" style="padding:0">' +
+          '<div class="l">' + Z.n + '</div>' +
+          '<div class="v">' + pct(zs.done, zs.all) + '<small>%</small></div>' +
+          '<div class="d">принято ' + zs.done + ' из ' + zs.all + ' квартир' +
+          (zs.started ? ' · в работе ' + zs.started : '') + '</div>' +
+          '<div class="bar"><i class="b-s" style="width:' + pct(zs.done, zs.all) + '%"></i>' +
+          '<i class="b-c" style="width:' + pct(zs.started, zs.all) + '%"></i></div></div>' +
+          '<div class="srow" style="margin-top:12px"><span>Оборудование</span>' +
+          '<div class="bar"><i class="b-s" style="width:' + Math.min(100, pct(zs.fact, zs.plan)) + '%"></i></div>' +
+          '<u>' + nf(zs.fact) + '/' + nf(zs.plan) + '</u></div>' +
+          '</div>';
+      }).join('') + '</div>' +
+      '<div class="hint">Санузел и квартира считаются отдельно: в санузлах работа обычно ' +
+      'уходит вперёд, и если мерить квартиру целиком, готовые санузлы не видно — квартира ' +
+      'просто висит с замечаниями. Зелёным — принято обходом полностью, жёлтым — начато.</div>'
+      : '') +
 
     '<div class="sec">Оборудование по проекту</div>' +
     '<div class="tblwrap"><table class="tbl"><thead><tr><th>Позиция</th>' +
@@ -410,7 +504,8 @@ function viewFlat() {
       '. Выбери тип вручную выше, тогда появится спецификация и она попадёт в план.</div>';
   }
 
-  var cmp = GROUPS.map(function (x) {
+  var cmp = ZONES.map(function (Z) {
+    var inner = groupsOfZone(Z.z).map(function (x) {
     var pl = p.per[x.k] || 0, ft = fa.per[x.k] || 0;
     if (!pl && !ft) return '';
     var man = fa.man[x.k] != null, imp = fa.imp[x.k] || 0;
@@ -421,7 +516,32 @@ function viewFlat() {
       '<button class="qb" data-q="' + x.k + '|-1">−</button>' +
       '<input class="qi ' + (!ft ? 'v-mut' : ft >= pl ? 'v-ok' : 'v-bad') + '" data-qi="' + x.k + '" value="' + ft + '">' +
       '<button class="qb" data-q="' + x.k + '|1">+</button></span></td></tr>';
+    }).join('');
+    if (!inner) return '';
+    var za = zoneAcc(b, num, Z.z);
+    return '<tr class="grp"><td colspan="3">' + Z.n +
+      (za.all ? ' · <span class="' + (za.done ? 'v-ok' : 'v-bad') + '">' +
+        (za.done ? 'принят' : 'принято ' + za.ok + ' из ' + za.all) + '</span>' : '') +
+      '</td></tr>' + inner;
   }).join('');
+
+  var byZone = accPos().length && (r.st && Object.keys(r.st).length)
+    ? '<div class="card">' + ZONES.map(function (Z) {
+      var list = accPos().filter(function (pp) { return (pp.z || 'flat') === Z.z && r.st[pp.id] != null; });
+      if (!list.length) return '';
+      var za = zoneAcc(b, num, Z.z);
+      return '<div class="row" style="background:var(--bg)"><b>' + Z.n + '</b>' +
+        '<span class="badge ' + (za.done ? 'ok' : 'bad') + '">' +
+        (za.done ? 'принят' : za.ok + ' из ' + za.all) + '</span></div>' +
+        list.map(function (pp) {
+          var v = r.st[pp.id];
+          return '<div class="row"><b style="font-weight:450">' + h(pp.n) + '</b>' +
+            (v === 1 ? '<span class="v-ok">принято</span>'
+              : v === 2 ? '<span class="v-mut">не предусмотрено</span>'
+                : '<span class="v-bad">нет</span>') + '</div>';
+        }).join('');
+    }).join('') + '</div>'
+    : '';
 
   var obhod = !g.c
     ? '<div class="card pad" style="color:var(--muted-fg);font-size:14px">Квартиру ещё не обходили ' +
@@ -475,7 +595,7 @@ function viewFlat() {
       '<div class="hint">Цифры правятся руками — кнопками или прямо в поле. Если по квартире ' +
       'приезжали данные обхода, а ты поставил своё число, под названием останется, что показывал обход.</div>'
       : '<div class="card pad" style="color:var(--muted-fg);font-size:14px">Нечего сравнивать: тип не определён.</div>') +
-    '<div class="sec">Что показал обход</div>' + obhod + '</div>' +
+    '<div class="sec">Что показал обход</div>' + obhod + byZone + '</div>' +
     '</div>' +
 
     '<div class="sec">Спецификация по проекту</div>' + spec;
@@ -861,7 +981,8 @@ function act(a) {
       Object.keys(ST.flats).forEach(function (b) {
         Object.keys(ST.flats[b]).forEach(function (n) {
           var r = ST.flats[b][n];
-          delete r.c; delete r.q; delete r.w; delete r.left; delete r.miss; delete r.crit; delete r.fix;
+          delete r.c; delete r.q; delete r.w; delete r.st;
+          delete r.left; delete r.miss; delete r.crit; delete r.fix;
         });
       });
       ST.imp = null; save(); render(); toast('Данные обхода убраны');
@@ -984,6 +1105,11 @@ function doImport() {
   var pos = cfg.positions || [];
 
   ST.crews = (o.crews || []).map(function (w) { return { id: w.id, n: w.n }; });
+  if (pos.length) {
+    ST.acc = pos.map(function (p) {
+      return { id: p.id, n: p.n, z: /санузел|с\/у|ванн/i.test(String(p.g || '')) ? 'wc' : 'flat' };
+    });
+  }
 
   p.bs.forEach(function (x) {
     if (!x.to) return;
@@ -998,7 +1124,9 @@ function doImport() {
       if (o.light) {
         if (src.c) { r.c = src.c; n++; } else { delete r.c; }
         if (src.miss) r.miss = src.miss; else delete r.miss;
+        if (src.st) r.st = src.st; else delete r.st;
       } else {
+        if (src.st) r.st = src.st; else delete r.st;
         var filled = 0, bad = 0, missing = [];
         pos.forEach(function (pp) {
           var v = src.st && src.st[pp.id];
@@ -1139,6 +1267,7 @@ function applyObject(o, name) {
     ST.proj = { object: o.object, buildings: o.buildings };
     ST.cfg = JSON.parse(JSON.stringify(o.preset || {}));
     ST.crews = o.crews || [];
+    ST.acc = o.acc || [];
     if (o.walk) {
       ST.flats = o.walk;
       ST.imp = {

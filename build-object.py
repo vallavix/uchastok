@@ -122,6 +122,10 @@ def read_walk(path):
         src = json.load(f)
     cfg, data = src.get('cfg') or {}, src.get('data') or {}
     positions = cfg.get('positions') or []
+    # раздел позиции («Санузел») — это зона; в санузлах работа обычно уходит
+    # вперёд, и без разделения готовые санузлы не видны за незакрытой квартирой
+    def zone_of(p):
+        return 'wc' if re.search(r'санузел|с/у|ванн', str(p.get('g') or ''), re.I) else 'flat' 
     cmap = {c['id']: group_of_count(c['n']) for c in (cfg.get('count') or [])}
     crews = [{'id': w['id'], 'n': w['n']} for w in (cfg.get('crews') or [])]
 
@@ -132,13 +136,18 @@ def read_walk(path):
             if not r:
                 continue
             rec = {}
-            vals = [r.get('st', {}).get(p['id']) for p in positions]
+            st = r.get('st') or {}
+            vals = [st.get(p['id']) for p in positions]
             filled = [v for v in vals if v is not None]
-            miss = [p['n'] for p in positions if r.get('st', {}).get(p['id']) == 0]
+            miss = [p['n'] for p in positions if st.get(p['id']) == 0]
             if filled:
                 rec['c'] = 2 if miss else 1
             if miss:
                 rec['miss'] = ', '.join(miss)
+            # полный расклад приёмки: он же даёт готовность по зонам
+            acc = {pid: v for pid, v in st.items() if v is not None}
+            if acc:
+                rec['st'] = acc
             # раньше в обходе было два поля; теперь одно, старое дописываем
             left = (r.get('left') or '').strip()
             note = (r.get('note') or '').strip()
@@ -183,6 +192,17 @@ def read_walk(path):
         if out:
             flats[bid] = out
     return flats, crews, total
+
+
+def accepted_positions(path):
+    """Позиции приёмки с зонами — по ним считается готовность квартиры и санузла."""
+    with open(path, encoding='utf-8') as f:
+        cfg = (json.load(f).get('cfg') or {})
+    out = []
+    for p in (cfg.get('positions') or []):
+        z = 'wc' if re.search(r'санузел|с/у|ванн', str(p.get('g') or ''), re.I) else 'flat'
+        out.append({'id': p['id'], 'n': p['n'], 'z': z})
+    return out
 
 
 def main():
@@ -231,6 +251,7 @@ def main():
         pkg['walk'] = flats
         pkg['crews'] = crews
         pkg['walkName'] = os.path.basename(WALK_BACKUP)
+        pkg['acc'] = accepted_positions(WALK_BACKUP)
         print('данные обхода: квартир %d, бригад %d' % (total, len(crews)))
     else:
         print('данные обхода не подключены')
