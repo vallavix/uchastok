@@ -1,0 +1,162 @@
+/* Приложение начальника участка. Расчёт на слабый компьютер: никаких теней в
+   списках на сотни строк, никаких анимаций кроме кнопок, всё на одной сетке. */
+:root{
+  --bg:#f1f5f9; --surface:#fff; --fg:#0f172a; --muted-fg:#64748b; --muted:#e2e8f0;
+  --border:#e2e8f0; --ok:#16a34a; --ok-bg:#dcfce7; --warn:#f59e0b; --warn-bg:#fef3c7;
+  --bad:#dc2626; --bad-bg:#fee2e2; --acc:#2563eb; --acc-bg:#dbeafe;
+  --r:12px; --r-sm:8px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:var(--bg);color:var(--fg);
+  font:15px/1.45 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  -webkit-font-smoothing:antialiased
+}
+button,input,select,textarea{font:inherit;color:inherit}
+button{background:none;border:none;cursor:pointer}
+input,select,textarea{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);padding:7px 9px
+}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--acc);outline-offset:-1px}
+svg{width:20px;height:20px;flex:0 0 auto}
+
+/* ---------- каркас: боковое меню + рабочая область ---------- */
+.wrap{display:flex;min-height:100vh}
+.side{
+  width:216px;flex:0 0 auto;background:var(--surface);border-right:1px solid var(--border);
+  padding:14px 10px;position:sticky;top:0;height:100vh;overflow-y:auto
+}
+.brand{display:flex;align-items:center;gap:9px;padding:6px 8px 14px;font-weight:700;letter-spacing:-.01em}
+.brand small{display:block;font-size:11px;font-weight:500;color:var(--muted-fg)}
+.nav{display:flex;flex-direction:column;gap:2px}
+.nav button{
+  display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:var(--r-sm);
+  font-size:14px;font-weight:550;color:var(--muted-fg);text-align:left;width:100%
+}
+.nav button:hover{background:var(--muted)}
+.nav button.on{background:var(--acc-bg);color:var(--acc)}
+.nav .n{margin-left:auto;font-size:11px;font-weight:700;font-variant-numeric:tabular-nums}
+.side-sec{font-size:11px;font-weight:700;color:var(--muted-fg);text-transform:uppercase;
+  letter-spacing:.05em;padding:16px 10px 6px}
+.main{flex:1;min-width:0;padding:22px 26px 60px;max-width:1180px}
+.head{display:flex;align-items:baseline;gap:12px;margin-bottom:18px;flex-wrap:wrap}
+.head h1{font-size:23px;font-weight:700;letter-spacing:-.02em}
+.head .sub{font-size:14px;color:var(--muted-fg)}
+.head .sp{margin-left:auto}
+
+/* ---------- карточки и сетки ---------- */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r)}
+.pad{padding:16px 18px}
+.sec{font-size:12px;font-weight:700;color:var(--muted-fg);text-transform:uppercase;
+  letter-spacing:.04em;margin:26px 0 10px}
+.sec:first-child{margin-top:0}
+.grid{display:grid;gap:12px}
+.g4{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+.g2{grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
+.hint{font-size:13px;color:var(--muted-fg);line-height:1.5;margin-top:10px}
+.hint b{color:var(--fg);font-weight:600}
+
+.kpi{padding:14px 16px}
+.kpi .l{font-size:12px;color:var(--muted-fg);font-weight:600}
+.kpi .v{font-size:30px;font-weight:750;letter-spacing:-.03em;line-height:1.15;margin-top:2px}
+.kpi .v small{font-size:14px;font-weight:600;color:var(--muted-fg);letter-spacing:0}
+.kpi .d{font-size:12px;color:var(--muted-fg);margin-top:2px}
+
+.bar{height:7px;border-radius:99px;background:var(--muted);overflow:hidden;display:flex;margin-top:9px}
+.bar i{display:block;height:100%}
+.bar .b-m{background:#60a5fa} .bar .b-c{background:var(--warn)} .bar .b-s{background:var(--ok)}
+.srow{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--muted-fg);margin-top:7px}
+.srow>span{flex:0 0 120px}
+.srow .bar{flex:1;margin-top:0}
+.srow u{text-decoration:none;flex:0 0 70px;text-align:right;font-variant-numeric:tabular-nums}
+
+/* ---------- таблицы ---------- */
+.tbl{width:100%;border-collapse:collapse;font-size:14px;background:var(--surface)}
+.tbl th,.tbl td{padding:8px 10px;border-bottom:1px solid var(--border);text-align:left}
+.tbl th{
+  font-size:11px;font-weight:700;color:var(--muted-fg);text-transform:uppercase;letter-spacing:.04em;
+  position:sticky;top:0;background:var(--surface);z-index:1;border-bottom:1px solid var(--border)
+}
+.tbl td.num,.tbl th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tbl tbody tr:hover{background:var(--bg)}
+.tbl .grp td{background:var(--bg);font-weight:700;font-size:12px;text-transform:uppercase;
+  letter-spacing:.04em;color:var(--muted-fg)}
+.tblwrap{border:1px solid var(--border);border-radius:var(--r);overflow:auto;max-height:calc(100vh - 220px)}
+.v-ok{color:var(--ok);font-weight:650}
+.v-bad{color:var(--bad);font-weight:650}
+.v-mut{color:var(--muted-fg)}
+
+/* ---------- сетка квартир ---------- */
+.flats{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}
+.flat{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);
+  padding:8px 6px 7px;display:flex;flex-direction:column;align-items:center;gap:5px;text-align:center
+}
+.flat:hover{border-color:var(--acc)}
+.flat b{font-size:16px;font-weight:650;font-variant-numeric:tabular-nums;line-height:1}
+.flat em{font-style:normal;font-size:10px;font-weight:600;color:var(--muted-fg);
+  line-height:1.15;min-height:12px;overflow:hidden}
+.stg{display:flex;gap:3px;width:100%}
+.stg i{flex:1;height:5px;border-radius:99px;background:var(--muted)}
+.stg i.m.on{background:#60a5fa} .stg i.c.on{background:var(--warn)} .stg i.s.on{background:var(--ok)}
+.flat.miss{border-style:dashed;opacity:.6}
+
+/* ---------- элементы управления ---------- */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:40px;
+  padding:0 16px;border-radius:var(--r-sm);font-size:14px;font-weight:600;
+  background:var(--surface);border:1px solid var(--border)
+}
+.btn:hover{background:var(--muted)}
+.btn-primary{background:var(--acc);border-color:var(--acc);color:#fff}
+.btn-primary:hover{background:#1d4ed8}
+.btn-ok{background:var(--ok);border-color:var(--ok);color:#fff}
+.btn[disabled]{opacity:.45;pointer-events:none}
+.tabs{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px}
+.tab{padding:7px 13px;border-radius:99px;background:var(--surface);border:1px solid var(--border);
+  font-size:13px;font-weight:600}
+.tab.on{background:var(--acc-bg);border-color:var(--acc);color:var(--acc)}
+.row{display:flex;align-items:center;gap:12px;padding:11px 14px;border-bottom:1px solid var(--border)}
+.row:last-child{border-bottom:none}
+.row b{flex:1;font-weight:550;font-size:14px}
+.sw{width:46px;height:28px;border-radius:99px;background:var(--muted);position:relative;flex:0 0 auto}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:99px;
+  background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .15s}
+.sw.on{background:var(--ok)} .sw.on::after{transform:translateX(18px)}
+.sw.on.warn{background:var(--warn)}
+.sw.ro{opacity:.5;pointer-events:none;transform:scale(.85)}
+.badge{display:inline-block;font-size:11px;font-weight:700;padding:2px 7px;border-radius:6px;
+  background:var(--muted);color:var(--muted-fg)}
+.badge.ok{background:var(--ok-bg);color:#166534}
+.badge.bad{background:var(--bad-bg);color:var(--bad)}
+.badge.warn{background:var(--warn-bg);color:#92400e}
+.legend{display:flex;flex-wrap:wrap;gap:8px 18px;margin:14px 0;font-size:12px;color:var(--muted-fg)}
+.legend span{display:flex;align-items:center;gap:6px}
+.legend i{width:11px;height:11px;border-radius:99px}
+.empty{text-align:center;padding:64px 20px;color:var(--muted-fg)}
+.note{border-left:3px solid var(--warn);background:var(--warn-bg);color:#78350f;
+  padding:11px 14px;border-radius:0 var(--r-sm) var(--r-sm) 0;font-size:13px;line-height:1.5}
+.note.bad{border-left-color:var(--bad);background:var(--bad-bg);color:#7f1d1d}
+.toast{
+  position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(10px);
+  background:#0f172a;color:#fff;padding:10px 18px;border-radius:99px;font-size:14px;font-weight:600;
+  opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:50
+}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+
+@media (max-width:820px){
+  .wrap{flex-direction:column}
+  .side{width:auto;height:auto;position:static;border-right:none;border-bottom:1px solid var(--border)}
+  .nav{flex-direction:row;flex-wrap:wrap}
+  .nav button{width:auto}
+  .side-sec{display:none}
+  .main{padding:16px 14px 40px}
+}
+
+/* поле количества в карточке квартиры */
+.qc{display:inline-flex;align-items:center;gap:4px}
+.qb{width:28px;height:28px;border-radius:6px;border:1px solid var(--border);background:var(--surface);
+  font-size:17px;font-weight:700;line-height:1;color:var(--muted-fg)}
+.qb:hover{background:var(--muted);color:var(--fg)}
+.qi{width:58px;text-align:center;padding:5px 4px;font-weight:650;font-variant-numeric:tabular-nums}
