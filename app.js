@@ -853,7 +853,7 @@ function bind() {
 
 function act(a) {
   switch (a) {
-    case 'pick': pickFile(readImport); break;
+    case 'pick': loadAny(); break;
     case 'cancelimport': go('imp'); break;
     case 'doimport': doImport(); break;
     case 'clearimp':
@@ -1112,13 +1112,29 @@ function renderEmpty() {
   });
 }
 
-/* Пакет объекта: проект + раскладка + уже собранные данные обхода */
-function loadObject() {
+/* Кнопок загрузки в приложении несколько, а файлов три вида, и перепутать их
+   легко. Поэтому смотрим не на то, куда нажали, а на то, что внутри файла. */
+function loadAny() {
   pickFile(function (o, name) {
-    if (!o || o.t !== 'uch-object' || !o.buildings) {
-      alert('Это не файл объекта. Нужен файл, который заканчивается на «_объект.json».');
+    if (o && o.t === 'uch-object' && o.buildings) { applyObject(o, name); return; }
+    if (o && (o.t === 'uch-export' || (o.cfg && o.data))) { readImport(o, name); return; }
+    if (o && o.flats && o.proj) {
+      if (!confirm('Это копия данных приложения. Заменить текущие отметки?')) return;
+      ST = o; MAPS = {}; save(); startWith(ST.proj); toast('Копия загружена');
       return;
     }
+    alert('Файл не подошёл.\n\nПодходят три вида:\n' +
+      '• файл объекта — «..._объект.json»\n' +
+      '• выгрузка обхода — «Начальнику_....json»\n' +
+      '• копия данных этого приложения');
+  });
+}
+
+/* Пакет объекта: проект + раскладка + уже собранные данные обхода */
+function loadObject() { loadAny(); }
+
+function applyObject(o, name) {
+  {
     ST = newState();
     ST.proj = { object: o.object, buildings: o.buildings };
     ST.cfg = JSON.parse(JSON.stringify(o.preset || {}));
@@ -1135,6 +1151,7 @@ function loadObject() {
     MAPS = {};
     save();
     startWith(ST.proj);
-    toast('Объект загружен: ' + o.object);
-  });
+    toast('Объект загружен: ' + o.object +
+      (o.walk ? ' · с данными обхода' : ''));
+  }
 }

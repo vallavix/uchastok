@@ -1,5 +1,5 @@
 /* Офлайн-кэш. При правках файлов поднимай версию — иначе браузер отдаст старое. */
-var V = 'uch-v11';
+var V = 'uch-v12';
 var FILES = ['./', './index.html', './style.css', './app.js',
   './manifest.json', './icon-180.png', './icon-512.png'];
 self.addEventListener('install', function (e) {
