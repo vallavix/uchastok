@@ -64,6 +64,12 @@ function groupName(k) {
   var g = GROUPS.filter(function (x) { return x.k === k; })[0];
   return g ? g.n : k;
 }
+/* Ведомость по проекту — 47 строк, и половина из них кабель, гофра и держатели:
+   их возит и считает снабжение, а начальнику участка нужна чистовая начинка.
+   Внутрянка — это ровно то, что раскладывается по группам. */
+function isInner(name) {
+  return !!groupOf(name);
+}
 function groupZone(k) {
   var g = GROUPS.filter(function (x) { return x.k === k; })[0];
   return g ? g.z : 'flat';
@@ -639,7 +645,11 @@ function viewFlat() {
 
 /* ---------- материалы ---------- */
 function viewMat() {
-  var b = bld(), list = materials(b), q = (VIEW.q || '').toLowerCase();
+  var b = bld(), full = materials(b), q = (VIEW.q || '').toLowerCase();
+  var mode = VIEW.mmode || 'inner';
+  var list = mode === 'inner'
+    ? full.filter(function (x) { return x.extra || isInner(x.n); })
+    : full;
   var shown = q ? list.filter(function (x) { return x.n.toLowerCase().indexOf(q) >= 0; }) : list;
   var sect = '';
 
@@ -671,6 +681,12 @@ function viewMat() {
     '<button class="btn" data-act="addmat">+ Позиция</button>' +
     '<button class="btn" data-act="csv">' + I.file + ' Выгрузить в CSV</button></div>' +
 
+    '<div class="tabs">' +
+    '<button class="tab ' + (mode === 'inner' ? 'on' : '') + '" data-mmode="inner">' +
+    'Внутрянка · ' + full.filter(function (x) { return x.extra || isInner(x.n); }).length + '</button>' +
+    '<button class="tab ' + (mode === 'all' ? 'on' : '') + '" data-mmode="all">' +
+    'Все позиции · ' + full.length + '</button></div>' +
+
     '<div class="grid g4" style="margin-bottom:14px">' +
     '<div class="card kpi"><div class="l">Нужно по проекту</div><div class="v">' + nf(tot.need) + '</div>' +
     '<div class="d">позиций в ведомости: ' + list.length + '</div></div>' +
@@ -689,7 +705,13 @@ function viewMat() {
     '<th class="num">По проекту</th><th class="num" style="width:96px">Пришло</th>' +
     '<th class="num">Смонтировано</th><th class="num">На объекте</th><th class="num">Заказать</th>' +
     '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
-    '<div class="hint">«По проекту» — спецификация, умноженная на количество квартир каждого типа. ' +
+    '<div class="hint">' +
+    (mode === 'inner' ? '<b>Внутрянка</b> — только то, что ставят в квартире. Кабель, гофра, ' +
+      'держатели и щитовая начинка спрятаны: их ведёт снабжение. Полный список — вкладка ' +
+      '«Все позиции».<br>' : '') +
+    '<b>Новая накладная:</b> впиши в «Пришло» со знаком плюс — <b>+200</b> — и оно прибавится ' +
+    'к тому, что уже было. Без плюса число заменяет итог целиком.<br>' +
+    '«По проекту» — спецификация, умноженная на количество квартир каждого типа. ' +
     '<b>«Пришло»</b> вписываешь сам по накладным — это единственная колонка, которую приложение ' +
     'знать не может. «Смонтировано» считается по установленным квартирам. ' +
     '<b>«На объекте»</b> — что лежит и ещё не смонтировано (пришло минус смонтировано), ' +
@@ -1014,10 +1036,20 @@ function bind() {
       render();
     };
   });
+  app.querySelectorAll('[data-mmode]').forEach(function (el) {
+    el.onclick = function () { VIEW.mmode = el.dataset.mmode; render(); };
+  });
   app.querySelectorAll('[data-recv]').forEach(function (el) {
     el.onchange = function () {
-      setRecv(bld(), el.dataset.recv, Math.max(0, parseInt(el.value, 10) || 0));
+      var b = bld(), key = el.dataset.recv, raw = String(el.value).trim();
+      /* «+200» — пришла ещё одна накладная, прибавляем к тому, что было.
+         Под конец объекта накладных много, и каждый раз считать итог в уме глупо. */
+      var m = raw.match(/^\+\s*(\d+)/);
+      var was = recvOf(b)[key] || 0;
+      var v = m ? was + parseInt(m[1], 10) : Math.max(0, parseInt(raw, 10) || 0);
+      setRecv(b, key, v);
       render();
+      if (m) toast('Добавлено ' + m[1] + ', стало ' + v);
     };
   });
   app.querySelectorAll('[data-cf]').forEach(function (el) {
