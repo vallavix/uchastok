@@ -160,3 +160,22 @@ svg{width:20px;height:20px;flex:0 0 auto}
   font-size:17px;font-weight:700;line-height:1;color:var(--muted-fg)}
 .qb:hover{background:var(--muted);color:var(--fg)}
 .qi{width:58px;text-align:center;padding:5px 4px;font-weight:650;font-variant-numeric:tabular-nums}
+
+/* поставки по строке ведомости */
+.lnk{text-align:left;font:inherit;color:inherit;padding:0}
+.lnk:hover{color:var(--acc)}
+.dlvrow td{background:var(--bg);padding:0}
+.dlvbox{padding:10px 14px 12px}
+.dlvhead{font-size:11px;font-weight:700;color:var(--muted-fg);text-transform:uppercase;
+  letter-spacing:.04em;margin-bottom:8px}
+.dlv{display:flex;align-items:center;gap:10px;padding:6px 0;font-size:13px;
+  border-bottom:1px solid var(--border)}
+.dlv:last-child{border-bottom:none}
+.dlv .d{flex:0 0 92px;color:var(--muted-fg);font-variant-numeric:tabular-nums}
+.dlv .doc{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dlv b{flex:0 0 auto;font-variant-numeric:tabular-nums}
+.dlv.add{gap:8px;padding-top:10px;flex-wrap:wrap}
+.dlv.add input{padding:5px 8px;font-size:13px}
+.dlv.add .btn{min-height:32px;padding:0 12px;font-size:13px}
+.iconbtn-x{width:22px;height:22px;border-radius:6px;color:var(--muted-fg);font-size:16px;line-height:1}
+.iconbtn-x:hover{background:var(--bad-bg);color:var(--bad)}

@@ -215,17 +215,60 @@ function setRecv(b, key, v) {
   save();
 }
 
-/* Приход материалов на объект. Ключ строки — название плюс единица: так же,
-   как в самой ведомости, иначе цифры разъедутся при правке проекта. */
-function recvOf(b) {
-  ST.recv = ST.recv || {};
-  ST.recv[b.id] = ST.recv[b.id] || {};
-  return ST.recv[b.id];
+/* Приход материалов ведём накладными, а не одним числом: под конец объекта их
+   десятки, и когда цифра не сходится, надо видеть, из чего она сложилась.
+   Ключ строки — название плюс единица, как в самой ведомости. */
+function dlvOf(b) {
+  ST.dlv = ST.dlv || {};
+  ST.dlv[b.id] = ST.dlv[b.id] || {};
+  return ST.dlv[b.id];
 }
-function setRecv(b, key, v) {
-  var r = recvOf(b);
-  if (v > 0) r[key] = v; else delete r[key];
+function dlvList(b, key) { return dlvOf(b)[key] || []; }
+function dlvSum(b, key) {
+  var s = 0;
+  dlvList(b, key).forEach(function (x) { s += (+x.q || 0); });
+  return s;
+}
+function addDlv(b, key, rec) {
+  var d = dlvOf(b);
+  d[key] = d[key] || [];
+  d[key].push(rec);
   save();
+}
+function delDlv(b, key, i) {
+  var d = dlvOf(b);
+  if (!d[key]) return;
+  d[key].splice(i, 1);
+  if (!d[key].length) delete d[key];
+  save();
+}
+/* Итог по строке — сумма накладных */
+function recvOf(b) {
+  var out = {}, d = dlvOf(b);
+  Object.keys(d).forEach(function (k) { out[k] = dlvSum(b, k); });
+  return out;
+}
+/* Правка итога руками превращается в корректировку: история не рвётся */
+function setRecv(b, key, v) {
+  var was = dlvSum(b, key), diff = v - was;
+  if (!diff) return;
+  addDlv(b, key, { q: diff, d: stamp(), doc: 'правка вручную' });
+}
+/* Старые данные, где приход был одним числом */
+function migrateRecv() {
+  if (!ST.recv) return false;
+  var moved = 0;
+  Object.keys(ST.recv).forEach(function (bid) {
+    ST.dlv = ST.dlv || {};
+    ST.dlv[bid] = ST.dlv[bid] || {};
+    Object.keys(ST.recv[bid]).forEach(function (k) {
+      if (ST.dlv[bid][k]) return;
+      var v = ST.recv[bid][k];
+      if (v > 0) { ST.dlv[bid][k] = [{ q: v, d: '', doc: 'до перехода на накладные' }]; moved++; }
+    });
+  });
+  delete ST.recv;
+  return moved > 0;
 }
 
 function setQ(b, num, k, v) {
@@ -644,6 +687,30 @@ function viewFlat() {
 }
 
 /* ---------- материалы ---------- */
+/* Раскрытая строка: из каких накладных сложился приход */
+function dlvRows(b, x) {
+  var dl = dlvList(b, x.key);
+  var body = dl.length
+    ? dl.map(function (r, i) {
+      return '<div class="dlv"><span class="d">' + h(r.d || 'без даты') + '</span>' +
+        '<span class="doc">' + h(r.doc || 'без номера') + '</span>' +
+        '<b>' + nf(r.q) + '</b>' +
+        '<button class="iconbtn-x" data-deldlv="' + h(x.key) + '|' + i + '" title="Удалить">×</button></div>';
+    }).join('')
+    : '<div class="dlv v-mut">Накладные не заносили</div>';
+
+  return '<tr class="dlvrow"><td colspan="7">' +
+    '<div class="dlvbox">' +
+    '<div class="dlvhead">Поставки · ' + h(x.n) + '</div>' +
+    body +
+    '<div class="dlv add">' +
+    '<input type="date" data-dnew="d" value="' + h(stamp()) + '">' +
+    '<input type="text" data-dnew="doc" placeholder="№ накладной">' +
+    '<input type="number" data-dnew="q" placeholder="сколько" style="width:100px">' +
+    '<button class="btn" data-adddlv="' + h(x.key) + '">Добавить</button>' +
+    '</div></div></td></tr>';
+}
+
 function viewMat() {
   var b = bld(), full = materials(b), q = (VIEW.q || '').toLowerCase();
   var mode = VIEW.mmode || 'inner';
@@ -665,14 +732,19 @@ function viewMat() {
     if (x.s !== sect && !q) { sect = x.s; head = '<tr class="grp"><td colspan="7">' + h(sect) + '</td></tr>'; }
     var order = x.need - x.recv;          /* сколько ещё не пришло на объект */
     var stock = x.recv - x.done;          /* лежит на объекте, но не смонтировано */
-    return head + '<tr><td>' + h(x.n) + '</td><td class="num v-mut">' + h(x.u) + '</td>' +
+    var dl = dlvList(b, x.key), open = VIEW.open === x.key;
+    return head + '<tr' + (open ? ' style="background:var(--bg)"' : '') + '>' +
+      '<td><button class="lnk" data-open="' + h(x.key) + '">' + h(x.n) +
+      (dl.length ? ' <span class="badge">' + dl.length + '</span>' : '') + '</button></td>' +
+      '<td class="num v-mut">' + h(x.u) + '</td>' +
       '<td class="num' + (x.need ? '' : ' v-mut') + '">' + (x.need ? nf(x.need) : '—') + '</td>' +
       '<td class="num"><input class="qi" data-recv="' + h(x.key) + '" value="' + (x.recv || '') + '" placeholder="—"></td>' +
       '<td class="num ' + (x.done ? 'v-ok' : 'v-mut') + '">' + (x.done ? nf(x.done) : '—') + '</td>' +
       '<td class="num ' + (!x.recv ? 'v-mut' : stock < 0 ? 'v-bad' : '') + '">' +
       (x.recv ? nf(stock) : '—') + '</td>' +
       '<td class="num ' + (!x.need ? 'v-mut' : order > 0 ? 'v-bad' : 'v-ok') + '">' +
-      (!x.need ? '—' : order > 0 ? nf(order) : '0') + '</td></tr>';
+      (!x.need ? '—' : order > 0 ? nf(order) : '0') + '</td></tr>' +
+      (open ? dlvRows(b, x) : '');
   }).join('');
 
   return '<div class="head"><h1>Материалы</h1><span class="sub">' + h(b.name) + ' · ' + list.length + ' позиций</span>' +
@@ -1036,6 +1108,32 @@ function bind() {
       render();
     };
   });
+  app.querySelectorAll('[data-open]').forEach(function (el) {
+    el.onclick = function () {
+      VIEW.open = VIEW.open === el.dataset.open ? null : el.dataset.open;
+      render();
+    };
+  });
+  app.querySelectorAll('[data-adddlv]').forEach(function (el) {
+    el.onclick = function () {
+      var box = el.parentNode, get = function (k) {
+        var f = box.querySelector('[data-dnew="' + k + '"]');
+        return f ? f.value : '';
+      };
+      var q = parseInt(get('q'), 10);
+      if (!q) { toast('Укажи количество'); return; }
+      addDlv(bld(), el.dataset.adddlv, { q: q, d: get('d'), doc: get('doc').trim() });
+      render();
+      toast('Накладная добавлена');
+    };
+  });
+  app.querySelectorAll('[data-deldlv]').forEach(function (el) {
+    el.onclick = function () {
+      var p = el.dataset.deldlv.split('|');
+      delDlv(bld(), p.slice(0, -1).join('|'), +p[p.length - 1]);
+      render();
+    };
+  });
   app.querySelectorAll('[data-mmode]').forEach(function (el) {
     el.onclick = function () { VIEW.mmode = el.dataset.mmode; render(); };
   });
@@ -1363,6 +1461,7 @@ function startWith(p) {
   try {
     PROJ = p;
     ST.cfg = ST.cfg || {};
+    if (migrateRecv()) save();
     MAPS = {};
     if (!ST.bid || !PROJ.buildings.some(function (b) { return b.id === ST.bid; })) ST.bid = PROJ.buildings[0].id;
     render();
@@ -1419,7 +1518,8 @@ function applyObject(o, name) {
     ST.cfg = JSON.parse(JSON.stringify(o.preset || {}));
     ST.crews = o.crews || [];
     ST.acc = o.acc || [];
-    ST.recv = o.recv || {};
+    ST.dlv = o.dlv || {};
+    if (o.recv) { ST.recv = o.recv; migrateRecv(); }
     ST.extra = o.extra || {};
     if (o.walk) {
       ST.flats = o.walk;
